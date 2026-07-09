@@ -5,7 +5,7 @@ from pathlib import Path
 
 from src.bot import GridBot
 from src.config import load_config
-from src.daemon import clear_stop, show_status, start_background, stop_background
+from src.daemon import clear_safe_exit, clear_stop, safe_exit_background, show_status, start_background, stop_background
 from src.exchange import MockOndoClient, OndoClient
 
 
@@ -44,42 +44,47 @@ def run_bot(config_path: Path) -> None:
     exchange = build_exchange(config)
     GridBot(config, exchange).run()
     clear_stop()
+    clear_safe_exit()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Ondo XAU/XAG grid bot — start/stop 24/7 trading",
+        description="Ondo XAU/XAG/BTC maker bot — start/stop 24/7 trading",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
-  start   Start bot in background (runs 24/7)
-  stop    Stop the running bot
-  status  Check if bot is running
-  run     Run in foreground (Ctrl+C to stop)
+  start      Start bot in background (runs 24/7)
+  safe-exit  Stop new entries; close existing positions with maker orders, then stop
+  stop       Force stop the running bot now
+  status     Check if bot is running
+  run        Run in foreground (Ctrl+C to stop)
 
 Examples:
   python -m src.main start
-  python -m src.main stop
+  python -m src.main safe-exit
   python -m src.main status
+  python -m src.main stop
         """,
     )
     parser.add_argument(
         "command",
         nargs="?",
         default="start",
-        choices=["start", "stop", "status", "run"],
-        help="start=background 24/7 (default), stop=halt, status=check, run=foreground",
+        choices=["start", "safe-exit", "safe_exit", "stop", "status", "run"],
+        help="start=background, safe-exit=finish open positions only, stop=halt, status=check, run=foreground",
     )
     parser.add_argument("-c", "--config", default="config.yaml", help="Path to config YAML")
     args = parser.parse_args()
 
     config_path = Path(args.config)
-    if args.command != "status" and not config_path.exists():
+    if args.command not in {"status", "safe-exit", "safe_exit"} and not config_path.exists():
         example = config_path.parent / "config.example.yaml"
         raise SystemExit(f"Config not found: {config_path}\nCopy {example.name} to {config_path.name}")
 
     if args.command == "start":
         start_background(str(config_path))
+    elif args.command in {"safe-exit", "safe_exit"}:
+        safe_exit_background()
     elif args.command == "stop":
         stop_background()
     elif args.command == "status":

@@ -125,6 +125,31 @@ class SingleMakerStrategy:
         for order in orders:
             self._cancel_order(order, reason)
 
+    def _cancel_idle_orders_for_safe_exit(self) -> None:
+        """Safe exit keeps only close orders for existing positions."""
+        for market in self.config.markets:
+            positions = self.exchange.get_positions(market)
+            orders = self._bot_open_orders(market)
+            if not orders:
+                continue
+
+            if not positions:
+                self._cancel_orders(orders, "safe exit; no position, cancel idle entry")
+                continue
+
+            close_side = self._close_side(positions[0])
+            wrong_side_orders = [order for order in orders if order.side != close_side]
+            if wrong_side_orders:
+                self._cancel_orders(wrong_side_orders, "safe exit; keep close side only")
+
+    def is_flat(self) -> bool:
+        for market in self.config.markets:
+            if self.exchange.get_positions(market):
+                return False
+            if self._bot_open_orders(market):
+                return False
+        return True
+
     @staticmethod
     def _close_side(position: Position) -> Side:
         return Side.SELL if position.direction == PositionDirection.LONG else Side.BUY
@@ -277,10 +302,14 @@ class SingleMakerStrategy:
                 )
                 slots -= 1
 
-    def tick(self) -> None:
+    def tick(self, allow_new_entries: bool = True) -> None:
         self._handle_order_fills_and_stale()
+        if not allow_new_entries:
+            self._cancel_idle_orders_for_safe_exit()
         self._manage_inventory()
-        balance = self.exchange.get_balance()
-        self._place_entry_quotes(balance)
+        if allow_new_entries:
+            balance = self.exchange.get_balance()
+            self._place_entry_quotes(balance)
+
 
 

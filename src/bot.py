@@ -3,7 +3,7 @@ import signal
 import time
 
 from src.config import AppConfig
-from src.daemon import clear_pid, stop_requested
+from src.daemon import clear_pid, clear_safe_exit, safe_exit_requested, stop_requested
 from src.exchange.base import ExchangeClient
 from src.strategy.single_maker import SingleMakerStrategy
 
@@ -50,21 +50,32 @@ class GridBot:
             self._setup_leverage()
             self._cancel_stale_grid_orders()
 
+        safe_exit_logged = False
         while self._running:
             if stop_requested():
                 logger.info("Stop command received — shutting down")
                 self._running = False
                 break
+
+            safe_exit = safe_exit_requested()
+            if safe_exit and not safe_exit_logged:
+                logger.info("Safe exit requested — no new entries; managing existing closes only")
+                safe_exit_logged = True
+
             try:
-                self.strategy.tick()
+                self.strategy.tick(allow_new_entries=not safe_exit)
+                if safe_exit and self.strategy.is_flat():
+                    logger.info("Safe exit complete — no bot positions or open bot orders remain")
+                    self._running = False
+                    break
             except Exception:
                 logger.exception("Bot tick failed")
             time.sleep(self.config.bot.poll_interval_sec)
 
         clear_pid()
+        clear_safe_exit()
         logger.info("Bot stopped")
 
     def _handle_stop(self, signum, frame) -> None:
         logger.info("Shutdown signal received (%s)", signum)
         self._running = False
-

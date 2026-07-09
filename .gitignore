@@ -7,4 +7,5 @@ bot.pid
 bot.stop
 logs/
 config.yaml
+bot.safe_exit
 

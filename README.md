@@ -65,6 +65,19 @@ Then run in background:
 ```powershell
 python -m src.main start
 python -m src.main status
+```
+
+Safe exit without opening new trades:
+
+```powershell
+python -m src.main safe-exit
+```
+
+`safe-exit` stops creating any new entry pairs immediately. If BTC has not opened yet, its pending bot orders are cancelled. If XAU/XAG/BTC already has a position, the bot keeps only the maker close order for that position, re-quotes it as usual, and automatically stops after all bot positions/orders are flat.
+
+Force stop only when you want the bot process to stop immediately:
+
+```powershell
 python -m src.main stop
 ```
 
@@ -104,7 +117,13 @@ python3 -m src.main status
 tail -f logs/bot.log
 ```
 
-Stop the bot:
+Safe exit the bot:
+
+```bash
+python3 -m src.main safe-exit
+```
+
+Force stop the bot:
 
 ```bash
 python3 -m src.main stop
@@ -217,5 +236,6 @@ bot:
   poll_interval_sec: 3
   dry_run: true
 ```
+
 
 

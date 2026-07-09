@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PID_FILE = ROOT / "bot.pid"
 STOP_FILE = ROOT / "bot.stop"
+SAFE_EXIT_FILE = ROOT / "bot.safe_exit"
 LOG_FILE = ROOT / "logs" / "bot.log"
 
 
@@ -61,6 +62,18 @@ def stop_requested() -> bool:
     return STOP_FILE.exists()
 
 
+def request_safe_exit() -> None:
+    SAFE_EXIT_FILE.touch()
+
+
+def clear_safe_exit() -> None:
+    SAFE_EXIT_FILE.unlink(missing_ok=True)
+
+
+def safe_exit_requested() -> bool:
+    return SAFE_EXIT_FILE.exists()
+
+
 def start_background(config_path: str = "config.yaml") -> None:
     if is_running():
         pid = read_pid()
@@ -68,6 +81,7 @@ def start_background(config_path: str = "config.yaml") -> None:
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     clear_stop()
+    clear_safe_exit()
     clear_pid()
 
     cmd = [sys.executable, "-m", "src.main", "run", "-c", config_path]
@@ -95,7 +109,23 @@ def start_background(config_path: str = "config.yaml") -> None:
     write_pid(proc.pid)
     print(f"Bot started (PID {proc.pid}) — trading 24/7")
     print(f"  Logs: {LOG_FILE}")
-    print(f"  Stop: python -m src.main stop")
+    print(f"  Safe exit: python -m src.main safe-exit")
+    print(f"  Stop now: python -m src.main stop")
+
+
+def safe_exit_background() -> None:
+    pid = read_pid()
+    if pid is None or not _process_alive(pid):
+        clear_pid()
+        clear_safe_exit()
+        print("Bot is not running.")
+        return
+
+    request_safe_exit()
+    print(f"Safe exit requested for bot (PID {pid}).")
+    print("  New entry orders will stop now.")
+    print("  Existing positions will keep maker close orders until flat.")
+    print(f"  Watch: python -m src.main status")
 
 
 def stop_background() -> None:
@@ -103,6 +133,7 @@ def stop_background() -> None:
     if pid is None or not _process_alive(pid):
         clear_pid()
         clear_stop()
+        clear_safe_exit()
         print("Bot is not running.")
         return
 
@@ -121,6 +152,7 @@ def stop_background() -> None:
 
     clear_pid()
     clear_stop()
+    clear_safe_exit()
     print("Bot stopped.")
 
 
@@ -128,6 +160,8 @@ def show_status() -> None:
     pid = read_pid()
     if pid and _process_alive(pid):
         print(f"Bot is RUNNING (PID {pid})")
+        if safe_exit_requested():
+            print("  Mode: SAFE EXIT requested (no new entries; closing existing positions)")
         print(f"  Logs: {LOG_FILE}")
         if LOG_FILE.exists():
             lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -135,5 +169,6 @@ def show_status() -> None:
                 print(f"  | {line}")
     else:
         clear_pid()
+        clear_safe_exit()
         print("Bot is STOPPED")
         print("  Start: python -m src.main start")
