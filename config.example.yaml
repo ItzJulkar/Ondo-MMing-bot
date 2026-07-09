@@ -1,0 +1,43 @@
+# Copy to config.yaml and edit.
+
+markets:
+  - XAU-USD.P
+  - XAG-USD.P
+  - BTC-USD.P
+
+api:
+  base_url: https://api.ondoperps.xyz
+
+leverage: 20
+
+strategy:
+  # Entry pair orders that are not filled get cancelled/requoted after this.
+  maker_timeout_sec: 10
+  # Max markets with active quotes or positions.
+  max_active_trades: 7
+  min_spread_pct: 0.0
+  max_spread_pct: 0.12
+  # Paired close target above entry, as percent price difference.
+  min_round_trip_profit_pct: 0.015
+  # Reprice unfilled maker close order after this many seconds.
+  close_reprice_sec: 3
+  max_mark_oracle_diff_pct: 0.25
+
+margin:
+  per_trade_initial_margin_pct: 30
+
+fees:
+  maker_pct: 0.0095
+  taker_pct: 0.02375
+
+pnl:
+  take_profit_roi_pct: 2.0
+  stop_loss_roi_pct: 2.0
+  max_close_slippage_pct: 0.02
+  enforce_slippage_on_stop_loss: false
+
+bot:
+  poll_interval_sec: 3
+  dry_run: true
+  dry_run_margin_usd: 5000
+  log_level: INFO
