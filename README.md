@@ -110,6 +110,91 @@ Stop the bot:
 python3 -m src.main stop
 ```
 
+
+## If Notepad Opens Blank
+
+If `.env` or `config.yaml` opens blank, you are probably not inside the bot folder or the copy command failed. Run this first:
+
+```powershell
+cd $env:USERPROFILE\Ondo-MMing-bot
+dir
+```
+
+You should see these files:
+
+```text
+.env.example
+config.example.yaml
+requirements.txt
+src
+```
+
+Then copy again:
+
+```powershell
+copy .env.example .env
+copy config.example.yaml config.yaml
+notepad .env
+notepad config.yaml
+```
+
+Paste this into `.env` and replace with your own Ondo API keys:
+
+```env
+ONDO_KEY_ID=ondoKeyId_YOUR_KEY_ID
+ONDO_API_SECRET=ondoApiSecret_YOUR_SECRET
+```
+
+Paste this into `config.yaml` if it is blank:
+
+```yaml
+markets:
+  - XAU-USD.P
+  - XAG-USD.P
+  - BTC-USD.P
+
+api:
+  base_url: https://api.ondoperps.xyz
+
+leverage: 20
+
+strategy:
+  maker_timeout_sec: 10
+  max_active_trades: 7
+  min_spread_pct: 0.0
+  max_spread_pct: 0.12
+  min_round_trip_profit_pct: 0.015
+  close_reprice_sec: 3
+  max_mark_oracle_diff_pct: 0.25
+
+margin:
+  per_trade_initial_margin_pct: 30
+
+fees:
+  maker_pct: 0.0095
+  taker_pct: 0.02375
+
+pnl:
+  take_profit_roi_pct: 2.0
+  stop_loss_roi_pct: 2.0
+  max_close_slippage_pct: 0.02
+  enforce_slippage_on_stop_loss: false
+
+bot:
+  poll_interval_sec: 3
+  dry_run: true
+  dry_run_margin_usd: 5000
+  log_level: INFO
+```
+
+Check that config loads before live trading:
+
+```powershell
+python -m src.main status
+```
+
+To test without live orders, keep `dry_run: true`. To trade live, change it to `dry_run: false` after your `.env` keys are correct.
+
 ## Important Files
 
 - `.env.example`: example only, never put real keys in GitHub.
@@ -132,4 +217,5 @@ bot:
   poll_interval_sec: 3
   dry_run: true
 ```
+
 
