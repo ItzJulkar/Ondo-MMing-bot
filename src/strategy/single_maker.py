@@ -24,6 +24,7 @@ class SingleMakerStrategy:
 
     ENTRY_PREFIX = "mm_entry_"
     CLOSE_PREFIX = "mm_close_"
+    REDUCE_CLOSE_PREFIX = "mm_close_reduce_"
     FAST_CLOSE_PREFIX = "mm_close_fast_"
 
     def __init__(self, config: AppConfig, exchange: ExchangeClient):
@@ -80,6 +81,11 @@ class SingleMakerStrategy:
 
     def _close_order_matches_loss_target(self, position: Position, order: Order) -> bool:
         return order.price == self._target_close_price(position, self._loss_target_pct())
+
+    def _close_order_matches_position(self, position: Position, order: Order) -> bool:
+        return order.size == abs(position.net_quantity) and bool(
+            order.client_order_id and order.client_order_id.startswith(self.REDUCE_CLOSE_PREFIX)
+        )
 
     def _initial_margin(self, position: Position) -> Decimal:
         leverage = Decimal(self.config.max_leverage_for(position.market))
@@ -255,24 +261,29 @@ class SingleMakerStrategy:
             if wrong_side_orders:
                 self._cancel_orders(wrong_side_orders, "position exists; wrong side")
 
+            stale_close_orders = [o for o in close_orders if not self._close_order_matches_position(position, o)]
+            if stale_close_orders:
+                self._cancel_orders(stale_close_orders, "close size/type mismatch; replace reduce-only")
+                close_orders = [o for o in close_orders if o not in stale_close_orders]
+
             if close_orders:
                 continue
 
             side, price, mode = self._maker_close_price(position, snapshot)
-            cid = f"{self.CLOSE_PREFIX}{market.replace('-', '_').replace('.', '_')}_{uuid.uuid4().hex[:10]}"
-            placed = self.exchange.place_limit_orders([GridLevel(price, side, cid)], position.net_quantity, market)
-            for order in placed:
-                self._placed_at[order.order_id] = time.time()
-            if placed:
-                logger.info(
-                    "[%s] Re-quoted maker close %s %s @ %s | ROI %.2f%% | entry=%s | mode=%s",
-                    market,
-                    side.value,
-                    position.net_quantity,
-                    price,
-                    float(self._roi_pct(position)),
-                    position.average_entry_price,
-                )
+            cid = f"{self.REDUCE_CLOSE_PREFIX}{market.replace('-', '_').replace('.', '_')}_{uuid.uuid4().hex[:10]}"
+            placed_order = self.exchange.place_reduce_only_limit_order(market, side, abs(position.net_quantity), price, cid, post_only=True)
+            self._placed_at[placed_order.order_id] = time.time()
+            logger.info(
+                "[%s] Re-quoted reduce-only maker close %s %s @ %s | ROI %.2f%% | entry=%s | mode=%s",
+                market,
+                side.value,
+                abs(position.net_quantity),
+                price,
+                float(self._roi_pct(position)),
+                position.average_entry_price,
+                mode,
+            )
+
 
     def _place_entry_quotes(self, balance) -> None:
         active_markets = self._active_markets()
