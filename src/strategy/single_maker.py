@@ -1,7 +1,7 @@
 import logging
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 
 from src.config import AppConfig
 from src.exchange.base import ExchangeClient
@@ -17,8 +17,9 @@ class SingleMakerStrategy:
     Paired maker strategy:
     1. Place two post-only maker orders together: buy at book bid and sell 0.015% above it.
     2. Whichever side fills first becomes inventory; the opposite order is kept as the close.
-    3. If the close side does not fill within close_reprice_sec, cancel and re-place at current book maker price.
-    4. Every order in this mode is post-only maker; no market/taker close is used.
+    3. First pair uses the normal target spread; loss-side inventory waits at the smaller loss close spread.
+    4. If inventory is in profit, the close is re-quoted at current book maker price after close_reprice_sec.
+    5. Every order in this mode is post-only maker; no market/taker close is used.
     """
 
     ENTRY_PREFIX = "mm_entry_"
@@ -46,6 +47,39 @@ class SingleMakerStrategy:
 
     def _target_pct(self) -> Decimal:
         return Decimal(str(self.config.min_round_trip_profit_pct)) / Decimal("100")
+
+    def _loss_target_pct(self) -> Decimal:
+        return Decimal(str(self.config.loss_close_profit_pct)) / Decimal("100")
+
+    @staticmethod
+    def _ceil_price(price: Decimal, increment: Decimal) -> Decimal:
+        if increment <= 0:
+            return price
+        steps = (price / increment).quantize(Decimal("1"), rounding=ROUND_CEILING)
+        return steps * increment
+
+    def _target_close_price(self, position: Position, target_pct: Decimal) -> Decimal:
+        info = self.exchange.get_market_info(position.market)
+        inc = info.quote_increment
+        if self._close_side(position) == Side.SELL:
+            raw = position.average_entry_price * (Decimal("1") + target_pct)
+            return self._ceil_price(raw, inc)
+        raw = position.average_entry_price * (Decimal("1") - target_pct)
+        return max(align_price(raw, inc), inc)
+
+    def _close_price_for_roi(self, position: Position, snapshot: MarketSnapshot) -> tuple[Side, Decimal, str]:
+        info = self.exchange.get_market_info(position.market)
+        inc = info.quote_increment
+        side = self._close_side(position)
+        roi = self._roi_pct(position)
+        if roi <= 0:
+            return side, self._target_close_price(position, self._loss_target_pct()), "loss-target"
+        if side == Side.SELL:
+            return side, align_price(snapshot.best_ask, inc), "profit-follow"
+        return side, max(align_price(snapshot.best_bid, inc), inc), "profit-follow"
+
+    def _close_order_matches_loss_target(self, position: Position, order: Order) -> bool:
+        return order.price == self._target_close_price(position, self._loss_target_pct())
 
     def _initial_margin(self, position: Position) -> Decimal:
         leverage = Decimal(self.config.max_leverage_for(position.market))
@@ -168,14 +202,8 @@ class SingleMakerStrategy:
             sell_price = buy_price + inc
         return buy_price, sell_price
 
-    def _maker_close_price(self, position: Position, snapshot: MarketSnapshot) -> tuple[Side, Decimal]:
-        info = self.exchange.get_market_info(position.market)
-        inc = info.quote_increment
-        side = self._close_side(position)
-        if side == Side.SELL:
-            return side, align_price(snapshot.best_ask, inc)
-        return side, max(align_price(snapshot.best_bid, inc), inc)
-
+    def _maker_close_price(self, position: Position, snapshot: MarketSnapshot) -> tuple[Side, Decimal, str]:
+        return self._close_price_for_roi(position, snapshot)
 
     def _handle_order_fills_and_stale(self) -> None:
         for order in list(self._bot_open_orders()):
@@ -198,10 +226,16 @@ class SingleMakerStrategy:
 
             positions = self.exchange.get_positions(fresh.market)
             ttl = self._timeout
-            if positions and fresh.side == self._close_side(positions[0]):
+            is_close = bool(positions and fresh.side == self._close_side(positions[0]))
+            if is_close:
+                position = positions[0]
+                if self._roi_pct(position) <= 0:
+                    if not self._close_order_matches_loss_target(position, fresh):
+                        self._cancel_order(fresh, "loss close retarget to 0.005%")
+                    continue
                 ttl = self.config.close_reprice_sec
             if self._order_age(fresh) >= ttl:
-                reason = "stale close quote" if positions and fresh.side == self._close_side(positions[0]) else "stale pair quote"
+                reason = "profitable stale close quote" if is_close else "stale pair quote"
                 self._cancel_order(fresh, reason)
 
     def _manage_inventory(self) -> None:
@@ -224,14 +258,14 @@ class SingleMakerStrategy:
             if close_orders:
                 continue
 
-            side, price = self._maker_close_price(position, snapshot)
+            side, price, mode = self._maker_close_price(position, snapshot)
             cid = f"{self.CLOSE_PREFIX}{market.replace('-', '_').replace('.', '_')}_{uuid.uuid4().hex[:10]}"
             placed = self.exchange.place_limit_orders([GridLevel(price, side, cid)], position.net_quantity, market)
             for order in placed:
                 self._placed_at[order.order_id] = time.time()
             if placed:
                 logger.info(
-                    "[%s] Re-quoted maker close %s %s @ %s | ROI %.2f%% | entry=%s",
+                    "[%s] Re-quoted maker close %s %s @ %s | ROI %.2f%% | entry=%s | mode=%s",
                     market,
                     side.value,
                     position.net_quantity,
@@ -310,6 +344,4 @@ class SingleMakerStrategy:
         if allow_new_entries:
             balance = self.exchange.get_balance()
             self._place_entry_quotes(balance)
-
-
 

@@ -82,6 +82,7 @@ class AppConfig:
     max_spread_pct: float
     min_spread_pct: float
     min_round_trip_profit_pct: float
+    loss_close_profit_pct: float
     fee_buffer_pct: float
     close_reprice_sec: float
     max_mark_oracle_diff_pct: float
@@ -139,6 +140,7 @@ def load_config(path: str | Path) -> AppConfig:
         max_spread_pct=float(strategy.get("max_spread_pct", 0.12)),
         min_spread_pct=float(strategy.get("min_spread_pct", 0.03)),
         min_round_trip_profit_pct=float(strategy.get("min_round_trip_profit_pct", 0.0)),
+        loss_close_profit_pct=float(strategy.get("loss_close_profit_pct", 0.005)),
         fee_buffer_pct=float(strategy.get("fee_buffer_pct", 0.003)),
         close_reprice_sec=float(strategy.get("close_reprice_sec", 5)),
         max_mark_oracle_diff_pct=float(strategy.get("max_mark_oracle_diff_pct", 0.25)),
@@ -178,6 +180,5 @@ def load_config(path: str | Path) -> AppConfig:
         key_id=os.getenv("ONDO_KEY_ID"),
         api_secret=os.getenv("ONDO_API_SECRET"),
     )
-
 
 

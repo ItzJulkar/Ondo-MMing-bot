@@ -17,8 +17,10 @@ strategy:
   max_active_trades: 7
   min_spread_pct: 0.0
   max_spread_pct: 0.12
-  # Paired close target above entry, as percent price difference.
+  # First paired close target, as percent price difference.
   min_round_trip_profit_pct: 0.015
+  # If position ROI is loss/flat, keep close target at this smaller spread.
+  loss_close_profit_pct: 0.005
   # Reprice unfilled maker close order after this many seconds.
   close_reprice_sec: 3
   max_mark_oracle_diff_pct: 0.25
@@ -41,3 +43,4 @@ bot:
   dry_run: true
   dry_run_margin_usd: 5000
   log_level: INFO
+

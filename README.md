@@ -9,7 +9,7 @@ For each market, the bot places a paired maker setup:
 1. A post-only buy order at the current orderbook bid.
 2. A post-only sell order about `0.015%` above the buy price.
 3. If one side fills, the opposite side is kept as the close order.
-4. If the close order does not fill, it is cancelled and re-quoted at the current maker side after `close_reprice_sec`.
+4. If the position is loss/flat, the close waits at `loss_close_profit_pct` target. If it is in profit, the close is re-quoted at the current maker side after `close_reprice_sec`.
 
 Current default markets:
 
@@ -236,6 +236,4 @@ bot:
   poll_interval_sec: 3
   dry_run: true
 ```
-
-
 
