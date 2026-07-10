@@ -34,7 +34,7 @@ fees:
 
 pnl:
   take_profit_roi_pct: 2.0
-  stop_loss_roi_pct: 2.0
+  stop_loss_roi_pct: 3.0
   max_close_slippage_pct: 0.02
   enforce_slippage_on_stop_loss: false
 

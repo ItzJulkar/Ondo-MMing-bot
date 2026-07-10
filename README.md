@@ -19,6 +19,8 @@ Current default markets:
 
 The bot does not commit API keys. Put keys only in `.env`.
 
+Emergency stop-loss: if an open position reaches the configured `stop_loss_roi_pct` loss, the bot cancels its open bot orders for that market and sends a reduce-only market close.
+
 ## Risk Notes
 
 This is live trading software. Maker orders are not guaranteed to fill instantly. If price moves away before the close fills, unrealized loss can happen. Use dry-run first and start with small balances.

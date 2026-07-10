@@ -19,7 +19,7 @@ class SingleMakerStrategy:
     2. Whichever side fills first becomes inventory; the opposite order is kept as the close.
     3. First pair uses the normal target spread; loss-side inventory waits at the smaller loss close spread.
     4. If inventory is in profit, the close is re-quoted at current book maker price after close_reprice_sec.
-    5. Every order in this mode is post-only maker; no market/taker close is used.
+    5. Emergency stop-loss uses reduce-only market close when ROI reaches configured SL.
     """
 
     ENTRY_PREFIX = "mm_entry_"
@@ -164,6 +164,38 @@ class SingleMakerStrategy:
     def _cancel_orders(self, orders: list[Order], reason: str) -> None:
         for order in orders:
             self._cancel_order(order, reason)
+
+    def _emergency_stop_losses(self) -> bool:
+        closed_any = False
+        sl_pct = Decimal(str(self.config.pnl.stop_loss_roi_pct))
+        for market in self.config.markets:
+            positions = self.exchange.get_positions(market)
+            if not positions:
+                continue
+
+            position = positions[0]
+            roi = self._roi_pct(position)
+            if roi > -sl_pct:
+                continue
+
+            orders = self._bot_open_orders(market)
+            if orders:
+                self._cancel_orders(orders, "emergency stop-loss; cancel bot orders before market close")
+
+            side = self._close_side(position)
+            self.exchange.close_position_market(market, side, abs(position.net_quantity))
+            logger.warning(
+                "[%s] Emergency SL market close %s %s | ROI %.2f%% <= -%.2f%% | uPnL=%s | entry=%s",
+                market,
+                side.value,
+                abs(position.net_quantity),
+                float(roi),
+                float(sl_pct),
+                position.unrealized_pnl,
+                position.average_entry_price,
+            )
+            closed_any = True
+        return closed_any
 
     def _cancel_idle_orders_for_safe_exit(self) -> None:
         """Safe exit keeps only close orders for existing positions."""
@@ -348,6 +380,8 @@ class SingleMakerStrategy:
                 slots -= 1
 
     def tick(self, allow_new_entries: bool = True) -> None:
+        if self._emergency_stop_losses():
+            return
         self._handle_order_fills_and_stale()
         if not allow_new_entries:
             self._cancel_idle_orders_for_safe_exit()
