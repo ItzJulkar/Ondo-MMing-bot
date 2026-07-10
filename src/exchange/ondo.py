@@ -279,8 +279,8 @@ class OndoClient(ExchangeClient):
                 "price": str(price),
                 "size": str(size),
                 "type": "limit",
-                "timeInForce": "GTC" if post_only else "IOC",
-                "postOnly": post_only,
+                "timeInForce": "IOC",
+                "postOnly": False,
                 "reduceOnly": True,
                 "clientOrderId": client_order_id,
             },
@@ -321,5 +321,4 @@ class OndoClient(ExchangeClient):
             order_type=OrderType(item.get("type", "limit")),
             created_at=created_at,
         )
-
 
